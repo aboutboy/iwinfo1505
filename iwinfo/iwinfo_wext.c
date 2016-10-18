@@ -32,6 +32,8 @@ static double wext_freq2float(const struct iw_freq *in)
 
 static inline int wext_freq2mhz(const struct iw_freq *in)
 {
+	int i;
+
 	if( in->e == 6 )
 	{
 		return in->m;
@@ -121,7 +123,16 @@ static int wext_get_bssid(const char *ifname, char *buf)
 {
 	struct iwreq wrq;
 
-	if(wext_ioctl(ifname, SIOCGIWAP, &wrq) >= 0)
+	char cmd[256];
+	FILE *fp = NULL;
+
+	memset(cmd, 0, sizeof(cmd));
+	sprintf(cmd, "ifconfig %s | grep UP", ifname);
+	fp = popen(cmd, "r");
+	fscanf(fp, "%s\n", buf);
+	pclose(fp);
+
+	if(strlen(buf)>=2 && wext_ioctl(ifname, SIOCGIWAP, &wrq) >= 0)
 	{
 		sprintf(buf, "%02X:%02X:%02X:%02X:%02X:%02X",
 			(uint8_t)wrq.u.ap_addr.sa_data[0], (uint8_t)wrq.u.ap_addr.sa_data[1],
@@ -130,6 +141,8 @@ static int wext_get_bssid(const char *ifname, char *buf)
 
 		return 0;
 	}
+	else
+		sprintf(buf, "00:00:00:00:00:00");
 
 	return -1;
 }
@@ -438,12 +451,6 @@ static int wext_get_hwmodelist(const char *ifname, int *buf)
 	return -1;
 }
 
-static int wext_get_htmodelist(const char *ifname, int *buf)
-{
-	/* Stub */
-	return -1;
-}
-
 static int wext_get_encryption(const char *ifname, char *buf)
 {
 	/* No reliable crypto info in wext */
@@ -545,7 +552,6 @@ const struct iwinfo_ops wext_ops = {
 	.quality_max      = wext_get_quality_max,
 	.mbssid_support   = wext_get_mbssid_support,
 	.hwmodelist       = wext_get_hwmodelist,
-	.htmodelist       = wext_get_htmodelist,
 	.mode             = wext_get_mode,
 	.ssid             = wext_get_ssid,
 	.bssid            = wext_get_bssid,

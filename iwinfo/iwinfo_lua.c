@@ -134,21 +134,21 @@ static char * iwinfo_crypto_desc(struct iwinfo_crypto_entry *c)
 						sprintf(desc, "mixed WPA/WPA2 %s (%s)",
 							iwinfo_crypto_print_suites(c->auth_suites),
 							iwinfo_crypto_print_ciphers(
-								c->pair_ciphers | c->group_ciphers));
+								c->pair_ciphers & c->group_ciphers));
 						break;
 
 					case 2:
 						sprintf(desc, "WPA2 %s (%s)",
 							iwinfo_crypto_print_suites(c->auth_suites),
 							iwinfo_crypto_print_ciphers(
-								c->pair_ciphers | c->group_ciphers));
+								c->pair_ciphers & c->group_ciphers));
 						break;
 
 					case 1:
 						sprintf(desc, "WPA %s (%s)",
 							iwinfo_crypto_print_suites(c->auth_suites),
 							iwinfo_crypto_print_ciphers(
-								c->pair_ciphers | c->group_ciphers));
+								c->pair_ciphers & c->group_ciphers));
 						break;
 				}
 			}
@@ -190,7 +190,7 @@ static void iwinfo_L_cryptotable(lua_State *L, struct iwinfo_crypto_entry *c)
 	lua_setfield(L, -2, "wpa");
 
 	lua_newtable(L);
-	for (i = 0, j = 1; i < ARRAY_SIZE(IWINFO_CIPHER_NAMES); i++)
+	for (i = 0, j = 1; i < 8; i++)
 	{
 		if (c->pair_ciphers & (1 << i))
 		{
@@ -201,7 +201,7 @@ static void iwinfo_L_cryptotable(lua_State *L, struct iwinfo_crypto_entry *c)
 	lua_setfield(L, -2, "pair_ciphers");
 
 	lua_newtable(L);
-	for (i = 0, j = 1; i < ARRAY_SIZE(IWINFO_CIPHER_NAMES); i++)
+	for (i = 0, j = 1; i < 8; i++)
 	{
 		if (c->group_ciphers & (1 << i))
 		{
@@ -212,7 +212,7 @@ static void iwinfo_L_cryptotable(lua_State *L, struct iwinfo_crypto_entry *c)
 	lua_setfield(L, -2, "group_ciphers");
 
 	lua_newtable(L);
-	for (i = 0, j = 1; i < ARRAY_SIZE(IWINFO_KMGMT_NAMES); i++)
+	for (i = 0, j = 1; i < 8; i++)
 	{
 		if (c->auth_suites & (1 << i))
 		{
@@ -223,7 +223,7 @@ static void iwinfo_L_cryptotable(lua_State *L, struct iwinfo_crypto_entry *c)
 	lua_setfield(L, -2, "auth_suites");
 
 	lua_newtable(L);
-	for (i = 0, j = 1; i < ARRAY_SIZE(IWINFO_AUTH_NAMES); i++)
+	for (i = 0, j = 1; i < 8; i++)
 	{
 		if (c->auth_algs & (1 << i))
 		{
@@ -246,44 +246,6 @@ static int iwinfo_L_mode(lua_State *L, int (*func)(const char *, int *))
 
 	lua_pushstring(L, IWINFO_OPMODE_NAMES[mode]);
 	return 1;
-}
-
-static void set_rateinfo(lua_State *L, struct iwinfo_rate_entry *r, bool rx)
-{
-	lua_pushnumber(L, r->rate);
-	lua_setfield(L, -2, rx ? "rx_rate" : "tx_rate");
-
-	lua_pushboolean(L, r->is_ht);
-	lua_setfield(L, -2, rx ? "rx_ht" : "tx_ht");
-
-	lua_pushboolean(L, r->is_vht);
-	lua_setfield(L, -2, rx ? "rx_vht" : "tx_vht");
-
-	lua_pushnumber(L, r->mhz);
-	lua_setfield(L, -2, rx ? "rx_mhz" : "tx_mhz");
-
-	if (r->is_ht)
-	{
-		lua_pushboolean(L, r->is_40mhz);
-		lua_setfield(L, -2, rx ? "rx_40mhz" : "tx_40mhz");
-
-		lua_pushnumber(L, r->mcs);
-		lua_setfield(L, -2, rx ? "rx_mcs" : "tx_mcs");
-
-		lua_pushboolean(L, r->is_short_gi);
-		lua_setfield(L, -2, rx ? "rx_short_gi" : "tx_short_gi");
-	}
-	else if (r->is_vht)
-	{
-		lua_pushnumber(L, r->mcs);
-		lua_setfield(L, -2, rx ? "rx_mcs" : "tx_mcs");
-
-		lua_pushnumber(L, r->nss);
-		lua_setfield(L, -2, rx ? "rx_nss" : "tx_nss");
-
-		lua_pushboolean(L, r->is_short_gi);
-		lua_setfield(L, -2, rx ? "rx_short_gi" : "tx_short_gi");
-	}
 }
 
 /* Wrapper for assoclist */
@@ -325,8 +287,35 @@ static int iwinfo_L_assoclist(lua_State *L, int (*func)(const char *, char *, in
 			lua_pushnumber(L, e->tx_packets);
 			lua_setfield(L, -2, "tx_packets");
 
-			set_rateinfo(L, &e->rx_rate, true);
-			set_rateinfo(L, &e->tx_rate, false);
+			lua_pushnumber(L, e->rx_rate.rate);
+			lua_setfield(L, -2, "rx_rate");
+
+			lua_pushnumber(L, e->tx_rate.rate);
+			lua_setfield(L, -2, "tx_rate");
+
+			if (e->rx_rate.mcs >= 0)
+			{
+				lua_pushnumber(L, e->rx_rate.mcs);
+				lua_setfield(L, -2, "rx_mcs");
+
+				lua_pushboolean(L, e->rx_rate.is_40mhz);
+				lua_setfield(L, -2, "rx_40mhz");
+
+				lua_pushboolean(L, e->rx_rate.is_short_gi);
+				lua_setfield(L, -2, "rx_short_gi");
+			}
+
+			if (e->tx_rate.mcs >= 0)
+			{
+				lua_pushnumber(L, e->tx_rate.mcs);
+				lua_setfield(L, -2, "tx_mcs");
+
+				lua_pushboolean(L, e->tx_rate.is_40mhz);
+				lua_setfield(L, -2, "tx_40mhz");
+
+				lua_pushboolean(L, e->tx_rate.is_short_gi);
+				lua_setfield(L, -2, "tx_short_gi");
+			}
 
 			lua_setfield(L, -2, macstr);
 		}
@@ -510,32 +499,6 @@ static int iwinfo_L_hwmodelist(lua_State *L, int (*func)(const char *, int *))
 		lua_pushboolean(L, hwmodes & IWINFO_80211_N);
 		lua_setfield(L, -2, "n");
 
-		lua_pushboolean(L, hwmodes & IWINFO_80211_AC);
-		lua_setfield(L, -2, "ac");
-
-		return 1;
-	}
-
-	lua_pushnil(L);
-	return 1;
-}
-
-/* Wrapper for htmode list */
-static int iwinfo_L_htmodelist(lua_State *L, int (*func)(const char *, int *))
-{
-	const char *ifname = luaL_checkstring(L, 1);
-	int i, htmodes = 0;
-
-	if (!(*func)(ifname, &htmodes))
-	{
-		lua_newtable(L);
-
-		for (i = 0; i < ARRAY_SIZE(IWINFO_HTMODE_NAMES); i++)
-		{
-			lua_pushboolean(L, htmodes & (1 << i));
-			lua_setfield(L, -2, IWINFO_HTMODE_NAMES[i]);
-		}
-
 		return 1;
 	}
 
@@ -608,7 +571,7 @@ static char * iwinfo_L_country_lookup(char *buf, int len, int iso3166)
 
 static int iwinfo_L_countrylist(lua_State *L, int (*func)(const char *, char *, int *))
 {
-	int len, i;
+	int len, i, j;
 	char rv[IWINFO_BUFSIZE], alpha2[3];
 	char *ccode;
 	const char *ifname = luaL_checkstring(L, 1);
@@ -619,7 +582,7 @@ static int iwinfo_L_countrylist(lua_State *L, int (*func)(const char *, char *, 
 
 	if (!(*func)(ifname, rv, &len))
 	{
-		for (l = IWINFO_ISO3166_NAMES, i = 1; l->iso3166; l++)
+		for (l = IWINFO_ISO3166_NAMES, j = 1; l->iso3166; l++)
 		{
 			if ((ccode = iwinfo_L_country_lookup(rv, len, l->iso3166)) != NULL)
 			{
@@ -637,7 +600,7 @@ static int iwinfo_L_countrylist(lua_State *L, int (*func)(const char *, char *, 
 				lua_pushstring(L, l->name);
 				lua_setfield(L, -2, "name");
 
-				lua_rawseti(L, -2, i++);
+				lua_rawseti(L, -2, j++);
 			}
 		}
 	}
@@ -670,7 +633,6 @@ LUA_WRAP_STRUCT_OP(wl,scanlist)
 LUA_WRAP_STRUCT_OP(wl,freqlist)
 LUA_WRAP_STRUCT_OP(wl,countrylist)
 LUA_WRAP_STRUCT_OP(wl,hwmodelist)
-LUA_WRAP_STRUCT_OP(wl,htmodelist)
 LUA_WRAP_STRUCT_OP(wl,encryption)
 LUA_WRAP_STRUCT_OP(wl,mbssid_support)
 LUA_WRAP_STRUCT_OP(wl,hardware_id)
@@ -700,7 +662,6 @@ LUA_WRAP_STRUCT_OP(madwifi,scanlist)
 LUA_WRAP_STRUCT_OP(madwifi,freqlist)
 LUA_WRAP_STRUCT_OP(madwifi,countrylist)
 LUA_WRAP_STRUCT_OP(madwifi,hwmodelist)
-LUA_WRAP_STRUCT_OP(madwifi,htmodelist)
 LUA_WRAP_STRUCT_OP(madwifi,encryption)
 LUA_WRAP_STRUCT_OP(madwifi,mbssid_support)
 LUA_WRAP_STRUCT_OP(madwifi,hardware_id)
@@ -730,7 +691,6 @@ LUA_WRAP_STRUCT_OP(nl80211,scanlist)
 LUA_WRAP_STRUCT_OP(nl80211,freqlist)
 LUA_WRAP_STRUCT_OP(nl80211,countrylist)
 LUA_WRAP_STRUCT_OP(nl80211,hwmodelist)
-LUA_WRAP_STRUCT_OP(nl80211,htmodelist)
 LUA_WRAP_STRUCT_OP(nl80211,encryption)
 LUA_WRAP_STRUCT_OP(nl80211,mbssid_support)
 LUA_WRAP_STRUCT_OP(nl80211,hardware_id)
@@ -759,7 +719,6 @@ LUA_WRAP_STRUCT_OP(wext,scanlist)
 LUA_WRAP_STRUCT_OP(wext,freqlist)
 LUA_WRAP_STRUCT_OP(wext,countrylist)
 LUA_WRAP_STRUCT_OP(wext,hwmodelist)
-LUA_WRAP_STRUCT_OP(wext,htmodelist)
 LUA_WRAP_STRUCT_OP(wext,encryption)
 LUA_WRAP_STRUCT_OP(wext,mbssid_support)
 LUA_WRAP_STRUCT_OP(wext,hardware_id)
@@ -787,7 +746,6 @@ static const luaL_reg R_wl[] = {
 	LUA_REG(wl,freqlist),
 	LUA_REG(wl,countrylist),
 	LUA_REG(wl,hwmodelist),
-	LUA_REG(wl,htmodelist),
 	LUA_REG(wl,encryption),
 	LUA_REG(wl,mbssid_support),
 	LUA_REG(wl,hardware_id),
@@ -820,7 +778,6 @@ static const luaL_reg R_madwifi[] = {
 	LUA_REG(madwifi,freqlist),
 	LUA_REG(madwifi,countrylist),
 	LUA_REG(madwifi,hwmodelist),
-	LUA_REG(madwifi,htmodelist),
 	LUA_REG(madwifi,encryption),
 	LUA_REG(madwifi,mbssid_support),
 	LUA_REG(madwifi,hardware_id),
@@ -853,7 +810,6 @@ static const luaL_reg R_nl80211[] = {
 	LUA_REG(nl80211,freqlist),
 	LUA_REG(nl80211,countrylist),
 	LUA_REG(nl80211,hwmodelist),
-	LUA_REG(nl80211,htmodelist),
 	LUA_REG(nl80211,encryption),
 	LUA_REG(nl80211,mbssid_support),
 	LUA_REG(nl80211,hardware_id),
@@ -885,7 +841,6 @@ static const luaL_reg R_wext[] = {
 	LUA_REG(wext,freqlist),
 	LUA_REG(wext,countrylist),
 	LUA_REG(wext,hwmodelist),
-	LUA_REG(wext,htmodelist),
 	LUA_REG(wext,encryption),
 	LUA_REG(wext,mbssid_support),
 	LUA_REG(wext,hardware_id),
